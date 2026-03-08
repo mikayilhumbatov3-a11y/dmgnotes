@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Pro Notes</title>
+
+<style>
+
+:root{
+--accent:#007aff;
+--bg:#f2f2f7;
+--card:#ffffffcc;
+--text:#111;
+--blur:blur(18px);
+}
+
+body.dark{
+--bg:#1c1c1e;
+--card:#2c2c2ecc;
+--text:#fff;
+}
+
+body{
+margin:0;
+font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;
+background:var(--bg);
+color:var(--text);
+}
+
+header{
+display:flex;
+justify-content:space-between;
+align-items:center;
+padding:15px;
+backdrop-filter:var(--blur);
+background:var(--card);
+position:sticky;
+top:0;
+z-index:10;
+}
+
+button{
+background:var(--accent);
+border:none;
+color:white;
+padding:8px 14px;
+border-radius:10px;
+cursor:pointer;
+font-weight:500;
+}
+
+.container{
+display:flex;
+height:92vh;
+}
+
+.sidebar{
+width:280px;
+overflow:auto;
+border-right:1px solid #0001;
+}
+
+.search{
+width:90%;
+margin:10px;
+padding:10px;
+border-radius:10px;
+border:none;
+background:#0001;
+}
+
+.noteCard{
+padding:12px;
+margin:8px;
+border-radius:12px;
+background:var(--card);
+backdrop-filter:var(--blur);
+cursor:pointer;
+transition:.2s;
+}
+
+.noteCard:hover{
+transform:scale(1.02);
+}
+
+.noteTitle{
+font-weight:600;
+}
+
+.editor{
+flex:1;
+display:flex;
+flex-direction:column;
+padding:10px;
+}
+
+input.title{
+font-size:20px;
+border:none;
+outline:none;
+background:none;
+font-weight:600;
+margin-bottom:6px;
+}
+
+textarea{
+flex:1;
+border:none;
+outline:none;
+resize:none;
+font-size:16px;
+background:none;
+color:var(--text);
+}
+
+.toolbar{
+display:flex;
+gap:8px;
+margin-bottom:8px;
+flex-wrap:wrap;
+}
+
+.stats{
+font-size:13px;
+opacity:.6;
+}
+
+.preview{
+flex:1;
+overflow:auto;
+padding:10px;
+border-top:1px solid #0002;
+display:none;
+}
+
+.tag{
+background:var(--accent);
+color:white;
+padding:2px 6px;
+border-radius:6px;
+font-size:11px;
+margin-right:4px;
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+<h3>Notes</h3>
+
+<div>
+<button onclick="newNote()">New</button>
+<button onclick="toggleDark()">Theme</button>
+<button onclick="exportNotes()">Export</button>
+<input type="file" id="importFile" hidden onchange="importNotes(event)">
+<button onclick="document.getElementById('importFile').click()">Import</button>
+</div>
+</header>
+
+<div class="container">
+
+<div class="sidebar">
+
+<input class="search" placeholder="Search..." oninput="search(this.value)">
+
+<div id="notesList"></div>
+
+</div>
+
+<div class="editor">
+
+<div class="toolbar">
+
+<button onclick="pinNote()">Pin</button>
+<button onclick="deleteNote()">Delete</button>
+<button onclick="togglePreview()">Preview</button>
+
+</div>
+
+<input class="title" id="title" placeholder="Title">
+
+<textarea id="editor" placeholder="Write something..."></textarea>
+
+<div class="stats" id="stats"></div>
+
+<div class="preview" id="preview"></div>
+
+</div>
+
+</div>
+
+<script>
+
+let notes=JSON.parse(localStorage.getItem("notesPro"))||[]
+let current=null
+
+function save(){
+localStorage.setItem("notesPro",JSON.stringify(notes))
+}
+
+function render(){
+
+let list=document.getElementById("notesList")
+list.innerHTML=""
+
+notes
+.sort((a,b)=>b.pinned-a.pinned)
+.forEach((n,i)=>{
+
+let card=document.createElement("div")
+card.className="noteCard"
+
+let tags=parseTags(n.text)
+
+card.innerHTML=
+`<div class="noteTitle">${n.pinned?"📌 ":""}${n.title||"Untitled"}</div>
+<div>${n.text.slice(0,60)}</div>
+<div>${tags.map(t=>`<span class="tag">${t}</span>`).join("")}</div>`
+
+card.onclick=()=>openNote(i)
+
+list.appendChild(card)
+
+})
+
+}
+
+function openNote(i){
+
+current=i
+
+document.getElementById("title").value=notes[i].title
+document.getElementById("editor").value=notes[i].text
+
+updateStats()
+updatePreview()
+
+}
+
+function newNote(){
+
+let n={
+title:"",
+text:"",
+pinned:false,
+date:Date.now()
+}
+
+notes.push(n)
+current=notes.length-1
+save()
+render()
+openNote(current)
+
+}
+
+function deleteNote(){
+
+if(current===null)return
+
+notes.splice(current,1)
+current=null
+
+document.getElementById("title").value=""
+document.getElementById("editor").value=""
+
+save()
+render()
+
+}
+
+function pinNote(){
+
+if(current===null)return
+
+notes[current].pinned=!notes[current].pinned
+
+save()
+render()
+
+}
+
+document.getElementById("title").oninput=()=>{
+if(current===null)return
+notes[current].title=title.value
+save()
+render()
+}
+
+document.getElementById("editor").oninput=()=>{
+
+if(current===null)return
+
+notes[current].text=editor.value
+
+updateStats()
+updatePreview()
+
+save()
+render()
+
+}
+
+function updateStats(){
+
+let text=editor.value
+
+let words=text.trim().split(/\s+/).filter(Boolean).length
+let chars=text.length
+
+stats.innerText=`${words} words • ${chars} characters`
+
+}
+
+function parseTags(text){
+
+let matches=text.match(/#\w+/g)
+return matches||[]
+
+}
+
+function search(q){
+
+q=q.toLowerCase()
+
+document.querySelectorAll(".noteCard").forEach(n=>{
+
+if(n.innerText.toLowerCase().includes(q))
+n.style.display="block"
+else
+n.style.display="none"
+
+})
+
+}
+
+function toggleDark(){
+document.body.classList.toggle("dark")
+}
+
+function togglePreview(){
+
+let p=document.getElementById("preview")
+
+if(p.style.display=="block")
+p.style.display="none"
+else
+p.style.display="block"
+
+}
+
+function updatePreview(){
+
+let text=editor.value
+
+let html=text
+.replace(/\*\*(.*?)\*\*/g,"<b>$1</b>")
+.replace(/\*(.*?)\*/g,"<i>$1</i>")
+.replace(/`(.*?)`/g,"<code>$1</code>")
+.replace(/\n/g,"<br>")
+
+preview.innerHTML=html
+
+}
+
+function exportNotes(){
+
+let blob=new Blob([JSON.stringify(notes)],{type:"application/json"})
+
+let a=document.createElement("a")
+a.href=URL.createObjectURL(blob)
+a.download="notes_backup.json"
+a.click()
+
+}
+
+function importNotes(e){
+
+let file=e.target.files[0]
+
+let reader=new FileReader()
+
+reader.onload=()=>{
+
+notes=JSON.parse(reader.result)
+
+save()
+render()
+
+}
+
+reader.readAsText(file)
+
+}
+
+document.addEventListener("keydown",e=>{
+
+if(e.ctrlKey && e.key=="s"){
+e.preventDefault()
+save()
+}
+
+if(e.ctrlKey && e.key=="n"){
+e.preventDefault()
+newNote()
+}
+
+})
+
+render()
+
+</script>
+
+</body>
+</html>
